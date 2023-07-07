@@ -13,8 +13,6 @@ import matplotlib.pyplot as plt
 import os
 import streamlit as st
 
-# os.makedirs('C:/Users/charl/Dropbox/simulatedBeadsImages-cluster2',exist_ok=True)
-
 
 def generate_ev_image(N, d_min, d_max, r_min, r_max, cluster_probability):
     plt.figure(figsize=(20, 20))
