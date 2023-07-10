@@ -1,0 +1,5 @@
+[core]
+    remote = data_research_dvc_gdrive
+['remote "data_research_dvc_gdrive"']
+    url = gdrive://1m4Szk4YT6XrLIZ53GhQpSq68V7rtkPed
+    gdrive_acknowledge_abuse = true
