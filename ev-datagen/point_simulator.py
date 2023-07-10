@@ -12,7 +12,7 @@ from scipy.signal import convolve2d
 import pandas as pd
 
 
-def generate_uniform_coordinates(N, size=1024):
+def generate_uniform_coordinates(N, size=(1024, 1024)):
     """Generate uniformly distributed coordinates."""
     coordinates = []
     for i in range(N):
@@ -22,7 +22,9 @@ def generate_uniform_coordinates(N, size=1024):
     return coordinates
 
 
-def generate_cluster_coordinates(coordinates, N_cluster_range, sigma, size=1024):
+def generate_cluster_coordinates(
+    coordinates, N_cluster_range, sigma, size=(1024, 1024)
+):
     """Generate a new set of coordinates clustered around the original coordinates."""
     clustered_coordinates = []
 
@@ -32,7 +34,9 @@ def generate_cluster_coordinates(coordinates, N_cluster_range, sigma, size=1024)
         cluster = np.random.normal(loc=coord, scale=sigma, size=(N_cluster_size, 2))
 
         # Clip the values so they fall within the image boundaries
-        cluster = np.clip(cluster, 0, size - 1).astype(int)
+        cluster[:, 0] = np.clip(cluster[:, 0], 0, size[0] - 1)
+        cluster[:, 1] = np.clip(cluster[:, 1], 0, size[1] - 1)
+        cluster = cluster.astype(int)
 
         clustered_coordinates.extend(cluster.tolist())
 
@@ -54,7 +58,7 @@ def generate_gaussian(size, psf_sigma=1, center=None):
     return G / G.sum()
 
 
-def render_image(coordinates, r, psf_sigma=1, size=(1024, 1024), show_kernel=False):
+def render_image(coordinates, r, psf_sigma, size, show_kernel=False):
     """Render coordinates onto an image canvas."""
     I = np.zeros(size)
 
@@ -94,7 +98,9 @@ if __name__ == "__main__":
     img_dim_y = st.sidebar.slider("Image Y Dimension", 256, 2048, 1024)
 
     coordinates = generate_uniform_coordinates(N, size=max(img_dim_x, img_dim_y))
-    coordinates = generate_cluster_coordinates(coordinates, N_cluster, cluster_sigma)
+    coordinates = generate_cluster_coordinates(
+        coordinates, N_cluster, cluster_sigma, (img_dim_x, img_dim_y)
+    )
 
     I = render_image(
         coordinates,
