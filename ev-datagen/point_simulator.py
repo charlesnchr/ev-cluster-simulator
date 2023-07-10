@@ -4,15 +4,20 @@
 * Github : github.com/charlesnchr
 ----------------------------------------"""
 
-from skimage import io, exposure
+from io import BytesIO
+from skimage import io, exposure, img_as_ubyte
 import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
 from scipy.signal import convolve2d
 import pandas as pd
+from typing import List, Tuple
+from numpy.typing import ArrayLike, NDArray
 
 
-def generate_uniform_coordinates(N, size=(1024, 1024)):
+def generate_uniform_coordinates(
+    N: int, size: Tuple[int, int] = (1024, 1024)
+) -> List[Tuple[int, int]]:
     """Generate uniformly distributed coordinates."""
     coordinates = []
     for i in range(N):
@@ -23,8 +28,11 @@ def generate_uniform_coordinates(N, size=(1024, 1024)):
 
 
 def generate_cluster_coordinates(
-    coordinates, N_cluster_range, sigma, size=(1024, 1024)
-):
+    coordinates: List[Tuple[int, int]],
+    N_cluster_range: Tuple[int, int],
+    sigma: float,
+    size: Tuple[int, int] = (1024, 1024),
+) -> NDArray[np.int_]:
     """Generate a new set of coordinates clustered around the original coordinates."""
     clustered_coordinates = []
 
@@ -43,7 +51,9 @@ def generate_cluster_coordinates(
     return np.array(clustered_coordinates)
 
 
-def generate_gaussian(size, psf_sigma=1, center=None):
+def generate_gaussian(
+    size: int, psf_sigma: float = 1, center: Tuple[int, int] = None
+) -> NDArray[np.float64]:
     """Generate a 2D Gaussian kernel."""
     x = np.arange(0, size, 1, float)
     y = x[:, np.newaxis]
@@ -58,7 +68,13 @@ def generate_gaussian(size, psf_sigma=1, center=None):
     return G / G.sum()
 
 
-def render_image(coordinates, r, psf_sigma, size, show_kernel=False):
+def render_image(
+    coordinates: NDArray[np.int_],
+    r: int,
+    psf_sigma: float,
+    size: Tuple[int, int],
+    show_kernel: bool = False,
+) -> NDArray[np.float64]:
     """Render coordinates onto an image canvas."""
     I = np.zeros(size)
 
@@ -85,17 +101,18 @@ def render_image(coordinates, r, psf_sigma, size, show_kernel=False):
 
 
 if __name__ == "__main__":
-    N = st.sidebar.slider("Number of clusters", 0, 1000, 100)
-    N_cluster = st.sidebar.slider("Localisations per cluster", 5, 50, (10, 20))
-    cluster_sigma = st.sidebar.slider("Cluster spread (sigma)", 0.0, 20.0, 10.0)
+    sidebar = st.sidebar
+    N = sidebar.slider("Number of clusters", 0, 1000, 100)
+    N_cluster = sidebar.slider("Localisations per cluster", 5, 50, (10, 20))
+    cluster_sigma = sidebar.slider("Cluster spread (sigma)", 0.0, 20.0, 10.0)
 
-    psf_sigma = st.sidebar.slider("Rendering sigma (PSF)", 0.0, 8.0, 3.0)
-    kernel_radius = st.sidebar.slider(
+    psf_sigma = sidebar.slider("Rendering sigma (PSF)", 0.0, 8.0, 3.0)
+    kernel_radius = sidebar.slider(
         "Kernel radius (image dimension half-axis)", 0, 15, 8
     )
-    show_kernel = st.sidebar.checkbox("Show kernel", value=False)
-    img_dim_x = st.sidebar.slider("Image X Dimension", 256, 2048, 1024)
-    img_dim_y = st.sidebar.slider("Image Y Dimension", 256, 2048, 1024)
+    show_kernel = sidebar.checkbox("Show rendering kernel", value=False)
+    img_dim_x = sidebar.slider("Image X Dimension", 256, 2048, 1024)
+    img_dim_y = sidebar.slider("Image Y Dimension", 256, 2048, 1024)
 
     coordinates = generate_uniform_coordinates(N, size=max(img_dim_x, img_dim_y))
     coordinates = generate_cluster_coordinates(
@@ -117,22 +134,44 @@ if __name__ == "__main__":
 
     # rescale
     p1, p2 = np.percentile(I, (0, 99.5))
-    I_plot = exposure.rescale_intensity(I, in_range=(p1, p2))
+    I_plot: NDArray[np.float64] = exposure.rescale_intensity(I, in_range=(p1, p2))
 
+    # plot
     fig = plt.figure(figsize=(20, 20))
     plt.imshow(I_plot, cmap="gray")
     st.pyplot(fig)
 
+    ## export
+    # convert to 8-bit unsigned integer format
+    img_ubyte = img_as_ubyte(I_plot)
+
+    # Save image to a BytesIO object
+    buf = BytesIO()
+    io.imsave(buf, img_ubyte, format="png")
+    buf.seek(0)
+
     # Create dataframe
-    coordinates_df = pd.DataFrame(coordinates, columns=["X", "Y"])
+    coordinates_df: pd.DataFrame = pd.DataFrame(coordinates, columns=["X", "Y"])
 
     # Convert DataFrame to CSV
-    csv = coordinates_df.to_csv(index=False)
+    csv: str = coordinates_df.to_csv(index=False)
 
-    # Download button
-    st.download_button(
-        label="Download coordinates as CSV",
-        data=csv,
-        file_name="coordinates.csv",
-        mime="text/csv",
-    )
+    ## download
+    cols = st.columns(2)
+
+    with cols[0]:
+        # Create the download button for the image
+        st.download_button(
+            label="Download Image as PNG",
+            data=buf.getvalue(),
+            file_name="image.png",
+            mime="image/png",
+        )
+    with cols[1]:
+        # Download button for the coordinates CSV
+        st.download_button(
+            label="Download coordinates as CSV",
+            data=csv,
+            file_name="coordinates.csv",
+            mime="text/csv",
+        )
