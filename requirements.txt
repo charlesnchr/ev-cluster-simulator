@@ -5,4 +5,4 @@ plotly
 scikit-image
 opencv-python
 pillow
-
+pandas

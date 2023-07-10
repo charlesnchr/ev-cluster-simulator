@@ -4,94 +4,129 @@
 * Github : github.com/charlesnchr
 ----------------------------------------"""
 
-import skimage
-import skimage.draw
-import skimage.io
-import skimage.transform
+from skimage import io, exposure
 import numpy as np
 import matplotlib.pyplot as plt
-import os
 import streamlit as st
+from scipy.signal import convolve2d
+import pandas as pd
 
 
-def generate_ev_image(N, d_min, d_max, r_min, r_max, cluster_probability):
-    plt.figure(figsize=(20, 20))
+def generate_uniform_coordinates(N, size=1024):
+    """Generate uniformly distributed coordinates."""
+    coordinates = []
+    for i in range(N):
+        x = np.random.randint(0, size)
+        y = np.random.randint(0, size)
+        coordinates.append((x, y))
+    return coordinates
 
-    skipped = 0
 
-    for n in range(1):
-        I = np.zeros((1024, 1024))
+def generate_cluster_coordinates(coordinates, N_cluster_range, sigma, size=1024):
+    """Generate a new set of coordinates clustered around the original coordinates."""
+    clustered_coordinates = []
 
-        for i in range(N):
-            x = np.random.randint(0, 1024)
-            y = np.random.randint(0, 1024)
+    for coord in coordinates:
+        # generate gaussian distributed points around each coordinate
+        N_cluster_size = np.random.randint(N_cluster_range[0], N_cluster_range[1])
+        cluster = np.random.normal(loc=coord, scale=sigma, size=(N_cluster_size, 2))
 
-            rows, cols = np.where(I == 0.8)
+        # Clip the values so they fall within the image boundaries
+        cluster = np.clip(cluster, 0, size - 1).astype(int)
 
-            d = np.random.randint(d_min, d_max)
+        clustered_coordinates.extend(cluster.tolist())
 
-            if np.random.rand() > 1 - cluster_probability and len(rows) > 0:
-                ri = np.random.randint(0, len(rows))
-                rr = rows[ri]
-                rc = cols[ri]
+    return np.array(clustered_coordinates)
 
-                # which neighbour ?
-                rn = np.random.randint(0, 8)
-                if rn == 0:
-                    x, y = rr + d, rc + d
-                elif rn == 1:
-                    x, y = rr + 0, rc + d
-                elif rn == 2:
-                    x, y = rr + d, rc + 0
-                elif rn == 3:
-                    x, y = rr - d, rc - d
-                elif rn == 4:
-                    x, y = rr + 0, rc - d
-                elif rn == 5:
-                    x, y = rr - d, rc + 0
-                elif rn == 6:
-                    x, y = rr + d, rc - d
-                elif rn == 7:
-                    x, y = rr - d, rc + d
 
-            # close to any neighbours?
-            useposition = True
+def generate_gaussian(size, psf_sigma=1, center=None):
+    """Generate a 2D Gaussian kernel."""
+    x = np.arange(0, size, 1, float)
+    y = x[:, np.newaxis]
+    if center is None:
+        x0 = y0 = size // 2
+    else:
+        x0 = center[0]
+        y0 = center[1]
+    G = np.exp(-((x - x0) ** 2 + (y - y0) ** 2) / (2 * psf_sigma**2))
 
-            for c in range(y - int(d - 1), y + int(d + 1)):
-                for r in range(x - int(d - 1), x + int(d - 1)):
-                    if r >= 1024 or c >= 1024 or r < 0 or c < 0:
-                        continue
-                    if I[r, c] == 0.8:
-                        useposition = False
+    # normalize
+    return G / G.sum()
 
-            if not useposition:
-                skipped += 1
-                continue
 
-            r = np.random.randint(r_min, r_max)
+def render_image(coordinates, r, psf_sigma=1, size=(1024, 1024), show_kernel=False):
+    """Render coordinates onto an image canvas."""
+    I = np.zeros(size)
 
-            if x + r >= 1024 or y + r >= 1024 or x - r < 0 or y - r < 0:
-                skipped += 1
-                continue
+    # to make the peak perfectly centered
+    kernel_dim = 2 * r + 1
 
-            cr, cc = skimage.draw.disk((x, y), r)
+    for x, y in coordinates:
+        gaussian = generate_gaussian(kernel_dim, psf_sigma=psf_sigma, center=None)
 
-            I[cr, cc] = 0.8
+        if show_kernel:
+            return gaussian
+
+        if (
+            x + r + 1 >= size[0]
+            or y + r + 1 >= size[1]
+            or x - r - 1 < 0
+            or y - r - 1 < 0
+        ):
+            continue
+
+        I[x - r : x + r + 1, y - r : y + r + 1] += gaussian
 
     return I
 
 
 if __name__ == "__main__":
-    # streamlit input for plotting parameters
-    N = st.sidebar.slider("Number of beads", 0, 1000, 100)
-    d_min = st.sidebar.slider("Minimum distance between beads", 0, 100, 10)
-    d_max = st.sidebar.slider("Maximum distance between beads", 0, 100, 11)
-    r_min = st.sidebar.slider("Minimum radius of beads", 0, 100, 10)
-    r_max = st.sidebar.slider("Maximum radius of beads", 0, 100, 11)
-    cluster_probability = st.sidebar.slider("Cluster probability", 0.0, 1.0, 0.5)
+    N = st.sidebar.slider("Number of points", 0, 1000, 100)
+    N_cluster = st.sidebar.slider("Cluster size", 5, 50, (10, 20))
+    cluster_sigma = st.sidebar.slider("Cluster sigma", 0.0, 20.0, 10.0)
 
-    I = generate_ev_image(N, d_min, d_max, r_min, r_max, cluster_probability)
+    psf_sigma = st.sidebar.slider("Kernel sigma (PSF)", 0.0, 8.0, 3.0)
+    kernel_radius = st.sidebar.slider(
+        "Kernel radius (image dimension half-axis)", 0, 15, 8
+    )
+    show_kernel = st.sidebar.checkbox("Show kernel", value=False)
+    img_dim_x = st.sidebar.slider("Image X Dimension", 256, 2048, 1024)
+    img_dim_y = st.sidebar.slider("Image Y Dimension", 256, 2048, 1024)
+
+    coordinates = generate_uniform_coordinates(N, size=max(img_dim_x, img_dim_y))
+    coordinates = generate_cluster_coordinates(coordinates, N_cluster, cluster_sigma)
+
+    I = render_image(
+        coordinates,
+        kernel_radius,
+        psf_sigma=psf_sigma,
+        size=(img_dim_x, img_dim_y),
+        show_kernel=show_kernel,
+    )
+
+    st.title("EV cluster simulator")
+    st.text(
+        f"Image details:\n\tshape: {I.shape}, dtype: {I.dtype}, max: {I.max():.2f}, min: {I.min():.2f}"
+    )
+
+    # rescale
+    p1, p2 = np.percentile(I, (0, 99.5))
+    I_plot = exposure.rescale_intensity(I, in_range=(p1, p2))
 
     fig = plt.figure(figsize=(20, 20))
-    plt.imshow(I, cmap="gray")
+    plt.imshow(I_plot, cmap="gray")
     st.pyplot(fig)
+
+    # Create dataframe
+    coordinates_df = pd.DataFrame(coordinates, columns=["X", "Y"])
+
+    # Convert DataFrame to CSV
+    csv = coordinates_df.to_csv(index=False)
+
+    # Download button
+    st.download_button(
+        label="Download coordinates as CSV",
+        data=csv,
+        file_name="coordinates.csv",
+        mime="text/csv",
+    )
