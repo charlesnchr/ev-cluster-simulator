@@ -85,11 +85,11 @@ def render_image(coordinates, r, psf_sigma, size, show_kernel=False):
 
 
 if __name__ == "__main__":
-    N = st.sidebar.slider("Number of points", 0, 1000, 100)
-    N_cluster = st.sidebar.slider("Cluster size", 5, 50, (10, 20))
-    cluster_sigma = st.sidebar.slider("Cluster sigma", 0.0, 20.0, 10.0)
+    N = st.sidebar.slider("Number of clusters", 0, 1000, 100)
+    N_cluster = st.sidebar.slider("Localisations per cluster", 5, 50, (10, 20))
+    cluster_sigma = st.sidebar.slider("Cluster spread (sigma)", 0.0, 20.0, 10.0)
 
-    psf_sigma = st.sidebar.slider("Kernel sigma (PSF)", 0.0, 8.0, 3.0)
+    psf_sigma = st.sidebar.slider("Rendering sigma (PSF)", 0.0, 8.0, 3.0)
     kernel_radius = st.sidebar.slider(
         "Kernel radius (image dimension half-axis)", 0, 15, 8
     )
